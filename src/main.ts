@@ -18,6 +18,97 @@ commits with appropriate comments as you make progress. Do not just undo and the
 at the end — we will see you’ve done this when we look at your commit log!
 */
 
+class Game {
+    private today : Day;
+    private stand: LemonadeStand;
+    private maxDays: number = 10;
+    
+    constructor(maxDays: number) {
+        this.maxDays = maxDays;
+        this.today = new Day(1, 'cloudy', 2, 1, 0.5);
+        this.stand = new LemonadeStand(100, { lemons: 10, sugar: 10, cups: 10 }, { lemonAmount: 2, sugarAmount: 1, waterAmount: 1, iceAmount: 1 }, 0.5);
+    }
+
+    gameIsNotOver() {
+        if (this.today.getDay() > this.maxDays) {
+            console.log("Game over: Summer break ended and you need to go to school! Learn well.");
+            return false;
+        }
+        if(this.stand.getCashBalance() <= 0) {
+            console.log("Game over: Sorry kid, you're broke. Best of luck next time!");
+            return false;
+        }
+        return true;
+    }
+
+    // Prints weather and prices
+    printDayInfo() {
+        console.log(`Day ${this.today.getDay()}: It's ${this.today.getWeather()}.`);
+
+        const costs = this.today.getCosts();
+        console.log(`Current prices: Lemons - $${costs.lemonCost}, Sugar - $${costs.sugarCost}, Cups - $${costs.cupCost}, Water and Ice - Always free!`);
+        console.log(`Cash balance: $${this.stand.getCashBalance()}`);
+
+        const inventory = this.stand.getInventory();
+        console.log(`Inventory: ${inventory.lemons} Lemons, ${inventory.sugar} Sugar, ${inventory.cups} Cups. Water and ice are free.`);
+        console.log(`With these supplies, you can make ${this.stand.inventoryToNumberOfLemonadeCups()} number of cups of lemonade.`);
+    }
+
+    // Sales proportional to heat
+    weatherToSales() {
+        const weather = this.today.getWeather();
+        switch (weather) {
+            case 'hot':
+                return 10;
+            case 'sunny':
+                return 7;
+            case 'cloudy':
+                return 5;
+            case 'rainy':
+                return 2;
+            case 'snowy':
+                return 1;
+            default:
+                return 0;
+        }
+    }
+
+    handlePurchasing() {
+        const costPerCup = this.stand.costPerCup(this.today.getCosts());
+        console.log(`Given the current costs, the cost for the supplies to make another cup of lemonade is $${costPerCup.toFixed(2)}.`);
+        const readline = require('readline');
+        const rl = readline.createInterface({
+            input: process.stdin,
+            output: process.stdout
+        });
+        rl.question("Enter the amount (0-10) of lemonade cups worth of supplies would you like to purchase? ", (cupsWorthToBuy) => {
+            const amountBought = this.stand.increaseInventory(parseInt(cupsWorthToBuy), this.today.getCosts());
+            console.log(`Successfully purchased ${amountBought} cups worth of supplies; total cost: $${(amountBought * costPerCup).toFixed(2)}.`);
+        });
+
+    }
+
+    /* shows day number, weather, today's prices, cash, inventory
+    asks by how many lemonade cup's worth of supplies to increase the inventory
+    tells the stand to buy (stand checks and deducts cash)
+    works out demand from weather, then sell min(demand, what you can make)
+    shows cups sold, supplies left, cash
+    advances to the next day */
+    run() {
+        while (this.gameIsNotOver()) {
+            this.printDayInfo();
+            this.handlePurchasing();
+            let salesDemand = this.weatherToSales();
+            let cupsCanMake = this.stand.inventoryToNumberOfLemonadeCups();
+            let cupsSold = this.stand.sellLemonade(Math.min(salesDemand, cupsCanMake));
+            let profits = cupsSold * this.stand.getSellingPricePerCup();
+            console.log(`Number of cups sold: ${cupsSold}`);
+            console.log(`Profits: $${profits.toFixed(2)}`);  // toFixed(2) because we tend to show just 2 decimal places
+            this.today.nextDay();
+        }
+    }
+}
+
 
 class Day {
     private day: number;
@@ -72,11 +163,13 @@ class LemonadeStand {
     private cashBalance: number;
     private inventory: {lemons: number; sugar: number; cups: number};
     private recipe: {lemonAmount: number, sugarAmount: number, waterAmount: number, iceAmount: number};
+    private sellingPricePerCup: number;
 
-    constructor(cashBalance: number, inventory: {lemons: number; sugar: number; cups: number}, recipe: {lemonAmount: number, sugarAmount: number, waterAmount: number, iceAmount: number}) {
+    constructor(cashBalance: number, inventory: {lemons: number; sugar: number; cups: number}, recipe: {lemonAmount: number, sugarAmount: number, waterAmount: number, iceAmount: number}, sellingPricePerCup: number) {
         this.cashBalance = cashBalance;
         this.inventory = inventory;
         this.recipe = recipe;
+        this.sellingPricePerCup = sellingPricePerCup;
     }
 
     getInventory() {
@@ -85,35 +178,43 @@ class LemonadeStand {
 
     getRecipe() {
         return this.recipe;
-        // console.log(`To make a cup of lemonade, you will need: ${this.recipe.lemonAmount} lemons, ${this.recipe.sugarAmount} sugar, and ${this.recipe.waterAmount} water.`);
     }
 
     getCashBalance() {
         return this.cashBalance;
     }
 
-    // Returns 0 if purchase fails, 1 if successful
-    increaseInventory(numberOfCupsIncrease: number, costs: {lemonCost: number, sugarCost: number, cupCost: number}) {
-        let charge = numberOfCupsIncrease * (costs.lemonCost * this.recipe.lemonAmount + costs.sugarCost * this.recipe.sugarAmount + costs.cupCost); // ice and water are free
+    getSellingPricePerCup() {
+        return this.sellingPricePerCup;
+    }
+
+    costPerCup(costs: {lemonCost: number, sugarCost: number, cupCost: number}) : number {
+        return costs.lemonCost * this.recipe.lemonAmount + costs.sugarCost * this.recipe.sugarAmount + costs.cupCost;
+    }
+
+    // Returns number of lemonade cups worth of supplies successfully added to inventory
+    increaseInventory(numberOfCupsIncrease: number, costs: {lemonCost: number, sugarCost: number, cupCost: number}) : number {
+        let charge = numberOfCupsIncrease * this.costPerCup(costs);; // ice and water are free
         
         if (this.cashBalance < charge) {
-            return 0;
+            let cupsCanBuy = Math.floor((this.cashBalance / charge) * numberOfCupsIncrease);
+            return this.increaseInventory(cupsCanBuy, costs);
         }
 
         this.cashBalance -= charge;
         this.inventory.lemons += numberOfCupsIncrease * this.recipe.lemonAmount;
         this.inventory.sugar += numberOfCupsIncrease * this.recipe.sugarAmount;
         this.inventory.cups += numberOfCupsIncrease * 1;
-        return 1;
+        return numberOfCupsIncrease;
     }
 
-    // If the user's requested amount exceeds available inventory, just make as many as possible
     // Returns the number of cups actually made
-    sellLemonade(cupsSold: number) {
+    sellLemonade(cupsSold: number) : number {
         let cupsFromInventoryToMake = this.inventoryToNumberOfLemonadeCups();
+
+        // If the user's requested amount exceeds available inventory, makes as many as possible
         if (cupsSold > cupsFromInventoryToMake) {
-            this.sellLemonade(cupsFromInventoryToMake);
-            return cupsFromInventoryToMake;
+            return this.sellLemonade(cupsFromInventoryToMake);
         }
 
         this.inventory.lemons -= this.recipe.lemonAmount * cupsSold;
@@ -122,9 +223,10 @@ class LemonadeStand {
         return cupsSold;
     }
 
-    // More rigorous inventory check to support if we wanted separate purchasing logic
-    // for each ingredient as an extension in the future
-    inventoryToNumberOfLemonadeCups() {
+    // Returns number of cups of lemonade possible to make with current inventory 
+    inventoryToNumberOfLemonadeCups() : number {
+        // More rigorous inventory check to support if we wanted separate purchasing logic
+        // for each ingredient as an extension in the future
         let cupsWorthOfLemon = this.inventory.lemons / this.recipe.lemonAmount;
         let cupsWorthOfSugar = this.inventory.sugar / this.recipe.sugarAmount;
 
