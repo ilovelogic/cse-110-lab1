@@ -1,0 +1,6 @@
+As a user, I want a lemonade stand simulation, so I can entertain myself.
+As a user, I want the simulation to emulate taking place over multiple days with different conditions each day, so that I met my desire for novelty.
+As a user, I want the simulation to have an end condition, so that I do not get bored of the game.
+As a user, I want to be told what factor(s) in the game affect the amount of lemonade sold, so that I can use strategy to improve my performance.
+As a user, I want to know how much money I have available and how much supplies currently cost, so that I can make informed purchasing decisions.
+As a user, I want an overview of how the game works given at the beginning, so I know the rules by which I am playing.
