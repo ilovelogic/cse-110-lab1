@@ -18,6 +18,8 @@ commits with appropriate comments as you make progress. Do not just undo and the
 at the end — we will see you’ve done this when we look at your commit log!
 */
 
+const readline = require('readline');
+
 class Game {
     private today : Day;
     private stand: LemonadeStand;
@@ -25,7 +27,7 @@ class Game {
     
     constructor(maxDays: number) {
         this.maxDays = maxDays;
-        this.today = new Day(1, 'cloudy', 2, 1, 0.5);
+        this.today = new Day(1, 'cloudy', 2, 1, 0.75);
         this.stand = new LemonadeStand(100, { lemons: 10, sugar: 10, cups: 10 }, { lemonAmount: 2, sugarAmount: 1, waterAmount: 1, iceAmount: 1 }, 0.5);
     }
 
@@ -73,25 +75,41 @@ class Game {
         }
     }
 
-    handlePurchasing() {
-        const costPerCup = this.stand.costPerCup(this.today.getCosts());
-        console.log(`Given the current costs, the cost for the supplies to make another cup of lemonade is $${costPerCup.toFixed(2)}.`);
-        const readline = require('readline');
+    getUserInputAndBuy(costPerCup: number) {
         const rl = readline.createInterface({
             input: process.stdin,
             output: process.stdout
         });
         rl.question("Enter the amount (0-10) of lemonade cups worth of supplies would you like to purchase? ", (cupsWorthToBuy) => {
-            const amountBought = this.stand.increaseInventory(parseInt(cupsWorthToBuy), this.today.getCosts());
+            const parsedCupsWorthToBuy = parseInt(cupsWorthToBuy);
+            if (isNaN(parsedCupsWorthToBuy) || parsedCupsWorthToBuy < 0 || parsedCupsWorthToBuy > 10) {
+                console.log("Invalid input. Please enter a number between 0 and 10.");
+                rl.close();
+                this.getUserInputAndBuy(costPerCup);
+            }
+            const amountBought = this.stand.increaseInventory(parsedCupsWorthToBuy, this.today.getCosts());
             console.log(`Successfully purchased ${amountBought} cups worth of supplies; total cost: $${(amountBought * costPerCup).toFixed(2)}.`);
+            rl.close();
         });
+        return;
+    }
 
+    handlePurchasing() {
+        const costPerCup = this.stand.costPerCup(this.today.getCosts());
+        this.stand.setSellingPricePerCup(costPerCup * (Math.random() * 2)+1);
+        const updatedSellingPricePerCup = this.stand.getSellingPricePerCup();
+
+        console.log(`Given the current costs, the cost for the supplies to make another cup of lemonade is $${costPerCup.toFixed(2)}.`);
+        console.log(`Your mom told you to set the selling price per cup today to: $${updatedSellingPricePerCup.toFixed(2)}.`);
+        
+        this.getUserInputAndBuy(costPerCup);
+        
     }
 
     /* shows day number, weather, today's prices, cash, inventory
     asks by how many lemonade cup's worth of supplies to increase the inventory
     tells the stand to buy (stand checks and deducts cash)
-    works out demand from weather, then sell min(demand, what you can make)
+    works out demand from weather, then sell min(demand, what user can make)
     shows cups sold, supplies left, cash
     advances to the next day */
     run() {
@@ -104,6 +122,8 @@ class Game {
             let profits = cupsSold * this.stand.getSellingPricePerCup();
             console.log(`Number of cups sold: ${cupsSold}`);
             console.log(`Profits: $${profits.toFixed(2)}`);  // toFixed(2) because we tend to show just 2 decimal places
+            console.log(`Cash balance: $${this.stand.getCashBalance().toFixed(2)}`);
+            console.log(`Inventory remaining: ${this.stand.getInventory().lemons} lemons, ${this.stand.getInventory().sugar} sugar, ${this.stand.getInventory().cups} cups`);
             this.today.nextDay();
         }
     }
@@ -187,7 +207,9 @@ class LemonadeStand {
     getSellingPricePerCup() {
         return this.sellingPricePerCup;
     }
-
+    setSellingPricePerCup(price: number) {
+        this.sellingPricePerCup = price;
+    }
     costPerCup(costs: {lemonCost: number, sugarCost: number, cupCost: number}) : number {
         return costs.lemonCost * this.recipe.lemonAmount + costs.sugarCost * this.recipe.sugarAmount + costs.cupCost;
     }
