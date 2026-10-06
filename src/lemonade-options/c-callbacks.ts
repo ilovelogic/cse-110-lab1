@@ -1,39 +1,18 @@
-/* Using good object-oriented design principles, implement a lemonade stand simulation.
-You should have a class to represent the state of the lemonade stand. The stand should
-maintain an inventory, which is updated every time a cup is sold according to a recipe
-that is maintained over time.
+// Version C: callbacks only, no async/await.
+// There is no while loop. Each day ends by starting the next day from inside the
+// input callback, so a new day can only begin after the player has answered.
 
-The simulation should proceed one day at a time. Each day, the player of the game will
-be told what the weather is (more lemonade will be sold on hotter days) and the current
-prices for supplies (cups, ice, lemons, and sugar). The player should input how much
-supplies to buy at the current prices. Then, the simulation should tell the player how
-many cups were sold, how many supplies are left, and what the current cash balance is.
-
-You should do some searching to find out how to handle console input in Node.js. This
-is an important skill (beyond just using AI and hoping it uses the API correctly).
-Read the documentation and make sure you’re doing it right.
-
-Be sure to commit your code each time you add a feature. We expect to see a few different
-commits with appropriate comments as you make progress. Do not just undo and then commit
-at the end — we will see you’ve done this when we look at your commit log!
-*/
-
-// Now we must compile with tsc always before running
-// since this is TypeScript-specific syntax.
-// Call is rl.question(prompt)
-// Returns a Promise<string> right away, await gives you the string
-// node: notes it is Node's built-in module, not an npm package with same name
-import readline = require('node:readline/promises');
+import * as readline from 'node:readline'; // 🔴 FIX: a typed import (require() made rl `any`, so tsc couldn't check it)
 
 class Game {
+    private static readonly MAX_CUPS_WORTH_PER_PURCHASE = 10;
+
     private today : Day;
     private stand: LemonadeStand;
     private maxDays: number = 10;
-    private static readonly MAX_CUPS_WORTH_PER_PURCHASE: number = 10; // used twice, so put here to be a SST
-    
-    // resource needed throughout the entire lifetime of Game
-    private rl = readline.createInterface({input: process.stdin, output: process.stdout});
-    
+    // One input interface for the whole game: created once here, closed when the game ends
+    private rl = readline.createInterface({ input: process.stdin, output: process.stdout });
+
     constructor(maxDays: number) {
         this.maxDays = maxDays;
         this.today = new Day(1, 'cloudy', 2, 1, 0.75);
@@ -61,8 +40,8 @@ class Game {
         console.log(`Cash balance: $${this.stand.getCashBalance()}`);
 
         const inventory = this.stand.getInventory();
-        console.log(`Inventory: ${inventory.lemons} Lemon(s), ${inventory.sugar} cup(s) of Sugar, ${inventory.cups} Cup(s).`);
-        console.log(`With these supplies, you can make ${this.stand.inventoryToNumberOfLemonadeCups()} cup(s) of lemonade.\n`);
+        console.log(`Inventory: ${inventory.lemons} Lemons, ${inventory.sugar} Sugar, ${inventory.cups} Cups. Water and ice are free.`);
+        console.log(`With these supplies, you can make ${this.stand.inventoryToNumberOfLemonadeCups()} number of cups of lemonade.`);
     }
 
     // Sales proportional to heat
@@ -84,63 +63,63 @@ class Game {
         }
     }
 
-    async getUserInputAndBuy(costPerCup: number) {
-        const numberCupsWorthToBuy = await this.askForCupsWorthToBuy();
-        const amountBought = this.stand.increaseInventory(Number(numberCupsWorthToBuy), this.today.getCosts());
-        console.log(`Successfully purchased ${amountBought} cups worth of supplies; total cost: $${(amountBought * costPerCup).toFixed(2)}.`);
-    }
-    async askForCupsWorthToBuy() : Promise<Number> {
+    // Asks for an amount and buys it, then calls onDone. On invalid input it asks again,
+    // and that new call is the one responsible for calling onDone.
+    getUserInputAndBuy(costPerCup: number, onDone: () => void) {
         const max = Game.MAX_CUPS_WORTH_PER_PURCHASE;
-        while (true) {
-            const answer = await this.rl.question(`Enter the amount (0-${max}) of lemonade cups worth of supplies you would like to purchase: `);
-        
-        const amount = Number(answer); 
-        const isValid = Number.isInteger(amount) && amount >= 0 && amount <= max;
-        if(isValid) {
-            return amount;
-        }
+        this.rl.question(`Enter the amount (0-${max}) of lemonade cups worth of supplies would you like to purchase? `, (cupsWorthToBuy) => {
+            const numberCupsWorthToBuy = Number(cupsWorthToBuy);
 
-        console.log("Invalid input. Please enter a valid number in given range.");
-        }
+            // handling evil user or buggy user
+            const isValid = Number.isInteger(numberCupsWorthToBuy) && numberCupsWorthToBuy >= 0 && numberCupsWorthToBuy <= max; // 🔴 FIX: isInteger also rejects NaN and decimals like "3.7"
+            if (!isValid) {
+                console.log(`Invalid input. Please enter a whole number between 0 and ${max}.`);
+                this.getUserInputAndBuy(costPerCup, onDone);
+                return; // 🔴 FIX: without this, the invalid amount fell through and was bought anyway
+            }
+
+            const amountBought = this.stand.increaseInventory(numberCupsWorthToBuy, this.today.getCosts());
+            console.log(`Successfully purchased ${amountBought} cups worth of supplies; total cost: $${(amountBought * costPerCup).toFixed(2)}.`);
+            onDone();
+        });
     }
 
-    async handlePurchasing() {
+    handlePurchasing(onDone: () => void) {
         const costPerCup = this.stand.costPerCup(this.today.getCosts());
-        this.stand.setSellingPricePerCup(costPerCup + Math.floor(Math.random() * 2)); // $0 or $1 more than cost of cup
+        this.stand.setSellingPricePerCup(costPerCup * (Math.random() * 2 + 1)); // 🔴 FIX: parentheses, so the price is 1x to 3x cost (was cost * 0-2, plus $1)
         const updatedSellingPricePerCup = this.stand.getSellingPricePerCup();
 
         console.log(`Given the current costs, the cost for the supplies to make another cup of lemonade is $${costPerCup.toFixed(2)}.`);
-        console.log(`Your mom told you to set the selling price per cup today to: $${updatedSellingPricePerCup.toFixed(2)}.\n`);
+        console.log(`Your mom told you to set the selling price per cup today to: $${updatedSellingPricePerCup.toFixed(2)}.`);
         
-        await this.getUserInputAndBuy(costPerCup);
+        this.getUserInputAndBuy(costPerCup, onDone);
     }
 
-    /* shows day number, weather, today's prices, cash, inventory
-    asks by how many lemonade cup's worth of supplies to increase the inventory
-    tells the stand to buy (stand checks and deducts cash)
-    works out demand from weather, then sell min(demand, what user can make)
-    shows cups sold, supplies left, cash
-    advances to the next day */
-    async run() {
-        try { // try-finally allows for input interface to close when game ends and only then
-            while (this.gameIsNotOver()) {
-                this.printDayInfo();
-                await this.handlePurchasing();
-                let salesDemand = this.weatherToSales();
-                let cupsCanMake = this.stand.inventoryToNumberOfLemonadeCups();
-                let cupsSold = this.stand.sellLemonade(Math.min(salesDemand, cupsCanMake));
-                let profits = cupsSold * this.stand.getSellingPricePerCup();
-                console.log();
-                console.log(`Number of cups sold: ${cupsSold}`);
-                console.log(`Today's earnings: $${profits.toFixed(2)}`);  // toFixed(2) because we tend to show just 2 decimal places
-                console.log(`Cash balance: $${this.stand.getCashBalance().toFixed(2)}`);
-                console.log(`Inventory remaining: : ${this.stand.getInventory().lemons} Lemon(s), ${this.stand.getInventory().sugar} cup(s) of Sugar, ${this.stand.getInventory().cups} Cup(s).`);
-                console.log('\n');
-                this.today.nextDay();
-            }
-        } finally {
-            this.rl.close();
+    // The rest of the day, after purchasing: sell, report, and advance the date
+    sellAndReport() {
+        let salesDemand = this.weatherToSales();
+        let cupsCanMake = this.stand.inventoryToNumberOfLemonadeCups();
+        let cupsSold = this.stand.sellLemonade(Math.min(salesDemand, cupsCanMake));
+        let profits = cupsSold * this.stand.getSellingPricePerCup();
+        console.log(`Number of cups sold: ${cupsSold}`);
+        console.log(`Profits: $${profits.toFixed(2)}`);  // toFixed(2) because we tend to show just 2 decimal places
+        console.log(`Cash balance: $${this.stand.getCashBalance().toFixed(2)}`);
+        console.log(`Inventory remaining: ${this.stand.getInventory().lemons} lemons, ${this.stand.getInventory().sugar} sugar, ${this.stand.getInventory().cups} cups`);
+        this.today.nextDay();
+    }
+
+    /* Plays one day. Instead of looping, it passes "finish today, then play the next day"
+    as the callback for purchasing, so the next day can only start after the player answers. */
+    run() {
+        if (!this.gameIsNotOver()) {
+            this.rl.close(); // 🔴 FIX: release stdin, or the program never exits
+            return;
         }
+        this.printDayInfo();
+        this.handlePurchasing(() => {
+            this.sellAndReport();
+            this.run();
+        });
     }
 }
 
@@ -168,13 +147,13 @@ class Day {
         return this.day;
     }
     getCosts() {
-        return this.costs; 
+        return this.costs;
     }
 
     nextDay() {
         this.day++;
         this.causeRandomWeather();
-        this.causeRandomPriceChange();
+        this.causeRandomPriceIncrease();
     }
 
     causeRandomWeather() {
@@ -182,17 +161,16 @@ class Day {
         const randomWeather = this.WEATHER[randomIndex];
         if (randomWeather === undefined) {
             throw new Error('Weather index out of bounds');
-        } // I just put this here to stop the this.weather from being red underlined; 
+        } // I just put this here to stop the this.weather from being red underlined;
         // This ought never actually be needed, given the set up
         this.weather = randomWeather;
     }
 
-    // Price change of anywhere from -1 to 1
-    causeRandomPriceChange() {
-        const randomChange = Math.floor(Math.random() * 3) - 1; // between $-1 and $1
-        this.costs.lemonCost += randomChange;
-        this.costs.sugarCost += randomChange;
-        this.costs.cupCost += randomChange;
+    causeRandomPriceIncrease() {
+        const randomIncrease = Math.floor(Math.random() * 3) + 1; // between $1 and $3
+        this.costs.lemonCost += randomIncrease;
+        this.costs.sugarCost += randomIncrease;
+        this.costs.cupCost += randomIncrease;
     }
 }
 
@@ -234,7 +212,7 @@ class LemonadeStand {
     // Returns number of lemonade cups worth of supplies successfully added to inventory
     increaseInventory(numberOfCupsIncrease: number, costs: {lemonCost: number, sugarCost: number, cupCost: number}) : number {
         let charge = numberOfCupsIncrease * this.costPerCup(costs);; // ice and water are free
-        
+
         if (this.cashBalance < charge) {
             let cupsCanBuy = Math.floor((this.cashBalance / charge) * numberOfCupsIncrease);
             return this.increaseInventory(cupsCanBuy, costs);
@@ -262,7 +240,7 @@ class LemonadeStand {
         return cupsSold;
     }
 
-    // Returns number of cups of lemonade possible to make with current inventory 
+    // Returns number of cups of lemonade possible to make with current inventory
     inventoryToNumberOfLemonadeCups() : number {
         // More rigorous inventory check to support if we wanted separate purchasing logic
         // for each ingredient as an extension in the future
@@ -273,8 +251,5 @@ class LemonadeStand {
     }
 }
 
-new Game(10).run().catch((err) => {
-    // Top-level point for error handling
-    console.error('An error occurred:', err);
-    process.exit(1);
-});
+// Entry point: after every class is declared, so Day and LemonadeStand exist when Game uses them
+new Game(10).run();

@@ -1,0 +1,12 @@
+{
+  "compilerOptions": {
+    "target": "es2022",
+    "module": "nodenext",
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "noEmit": true,
+    "types": ["node"],
+    "typeRoots": ["/Users/shimmernight/node_modules/@types"]
+  },
+  "include": ["*.ts"]
+}
